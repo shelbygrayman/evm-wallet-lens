@@ -44,8 +44,8 @@
 <script>
 // Public RPC endpoints. Users can replace the URL for any EVM chain.
 const CHAINS = [
-  { name: "Ethereum", rpc: "https://eth.drpc.org", symbol: "ETH" },
-  { name: "Base",     rpc: "https://mainnet.base.org",            symbol: "ETH" },
+  { name: "Ethereum", rpc: "https://eth.drpc.org", backup: "https://1rpc.io/eth", symbol: "ETH" },
+  { name: "Base",     rpc: "https://mainnet.base.org", backup: "https://base-rpc.publicnode.com", symbol: "ETH" },
   { name: "Arbitrum", rpc: "https://arb1.arbitrum.io/rpc",        symbol: "ETH" },
   { name: "Custom",   rpc: "",                                     symbol: "native" }
 ];
@@ -58,7 +58,7 @@ $("chain").onchange = () => { $("rpc").value = CHAINS[$("chain").value].rpc; };
 const isAddress = a => /^0x[0-9a-fA-F]{40}$/.test(a);
 
 // Minimal JSON-RPC call, no libraries needed.
-async function rpc(url, method, params) {
+async function rpcOnce(url, method, params) {
   const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -67,6 +67,17 @@ async function rpc(url, method, params) {
   const json = await res.json();
   if (json.error) throw new Error(json.error.message);
   return json.result;
+}
+
+// Try the chosen RPC first; if it fails (e.g. rate limit), retry on the chain's backup RPC.
+async function rpc(url, method, params) {
+  try {
+    return await rpcOnce(url, method, params);
+  } catch (e) {
+    const backup = CHAINS[$("chain").value].backup;
+    if (!backup || backup === url) throw e;
+    return await rpcOnce(backup, method, params);
+  }
 }
 
 // Format a hex wei value as a decimal string with `decimals` places.
