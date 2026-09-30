@@ -33,8 +33,8 @@
     <input id="rpc">
     <label for="addr">Wallet address</label>
     <input id="addr" placeholder="0x...">
-    <label for="token">ERC-20 token contract (optional)</label>
-    <input id="token" placeholder="0x...">
+    <label for="token">ERC-20 token contracts (optional, separate with commas)</label>
+    <input id="token" placeholder="0x..., 0x...">
     <button id="go">Look up</button>
   </div>
 
@@ -91,12 +91,13 @@ const pad = addr => addr.toLowerCase().replace("0x", "").padStart(64, "0");
 const ethCall = (url, to, data) => rpc(url, "eth_call", [{ to, data }, "latest"]);
 
 $("go").onclick = async () => {
-  const url = $("rpc").value.trim(), addr = $("addr").value.trim(), token = $("token").value.trim();
+  const url = $("rpc").value.trim(), addr = $("addr").value.trim(), tokens = $("token").value.split(",").map(t => t.trim()).filter(Boolean);
   const out = $("out");
   out.hidden = false;
   if (!url) { out.innerHTML = '<p class="err">Enter an RPC URL.</p>'; return; }
   if (!isAddress(addr)) { out.innerHTML = '<p class="err">That is not a valid wallet address.</p>'; return; }
-  if (token && !isAddress(token)) { out.innerHTML = '<p class="err">That is not a valid token address.</p>'; return; }
+  const bad = tokens.find(t => !isAddress(t));
+  if (bad) { out.innerHTML = `<p class="err">Not a valid token address: ${bad}</p>`; return; }
   out.textContent = "Loading...";
   try {
     const [chainId, balance, nonce] = await Promise.all([
@@ -109,15 +110,21 @@ $("go").onclick = async () => {
       ["Native balance", `${formatUnits(balance, 18)} ${CHAINS[$("chain").value].symbol}`],
       ["Transactions sent", parseInt(nonce, 16)]
     ];
-    if (token) {
-      // Function selectors: balanceOf(address)=0x70a08231, decimals()=0x313ce567, symbol()=0x95d89b41
-      const [bal, dec, sym] = await Promise.all([
-        ethCall(url, token, "0x70a08231" + pad(addr)),
-        ethCall(url, token, "0x313ce567"),
-        ethCall(url, token, "0x95d89b41")
-      ]);
-      rows.push(["Token balance", `${formatUnits(bal, parseInt(dec, 16))} ${decodeString(sym)}`]);
-    }
+    // Look up every token in parallel; one bad token doesn't break the others.
+    const results = await Promise.all(tokens.map(async token => {
+      try {
+        // Function selectors: balanceOf(address)=0x70a08231, decimals()=0x313ce567, symbol()=0x95d89b41
+        const [bal, dec, sym] = await Promise.all([
+          ethCall(url, token, "0x70a08231" + pad(addr)),
+          ethCall(url, token, "0x313ce567"),
+          ethCall(url, token, "0x95d89b41")
+        ]);
+        return [decodeString(sym), formatUnits(bal, parseInt(dec, 16))];
+      } catch (e) {
+        return [token.slice(0, 10) + "...", "Error: " + e.message];
+      }
+    }));
+    results.forEach(([sym, amount]) => rows.push([`Token: ${sym}`, amount]));
     out.innerHTML = "<table>" + rows.map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join("") + "</table>";
   } catch (e) {
     out.innerHTML = `<p class="err">Error: ${e.message}</p>`;
