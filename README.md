@@ -10,7 +10,7 @@ A lightweight browser tool for inspecting native balances, transaction counts an
 - Reads native balances, chain ID and transactions sent.
 - Looks up multiple ERC-20 contracts at once: separate their addresses with commas.
 - Reads token balances, decimals and symbols through JSON-RPC.
-- Retries failed Ethereum and Base requests using a backup endpoint.
+- Uses a backup for failed preset Ethereum/Base chain checks; each lookup then keeps all reads on one verified endpoint. Custom URLs never fall back to a preset.
 - Runs without a build step, package installation or wallet connection.
 
 ## Quick start
@@ -40,7 +40,7 @@ Token calls use manual ABI encoding and decoding. Each token lookup handles its 
 - Public RPC endpoints may rate-limit requests or reject browser requests. Try another compatible endpoint if a lookup fails.
 - Transactions sent is the account nonce, not a complete history of incoming transfers or contract activity.
 - Token contracts must belong to the selected network. Nonstandard metadata may fail to decode.
-- Balances are displayed with up to six decimal places, truncated rather than rounded. Very small balances can display as zero.
+- Balances are displayed with up to six decimal places, truncated rather than rounded. Nonzero balances below the six-decimal display precision show `<0.000001`.
 - This tool does not discover all tokens, calculate portfolio prices or display transfer history.
 
 ## Contributing
@@ -55,8 +55,12 @@ For a change, open a pull request explaining the behavior and how you checked it
 - [x] Backup RPC endpoints for Ethereum and Base
 - [ ] Recent transfer history
 - [ ] More network presets after verifying public RPC details
-- [ ] Better token metadata compatibility and small-balance display
+- [x] Bytes32 metadata support and small-balance display
 
 ## License
 
 MIT
+
+## Regression checks
+
+Run `node --test wallet.test.mjs` with Node 24. Tests cover untrusted HTML, custom endpoint isolation, chain mismatch, fallback consistency, exact integers, decimal limits, token metadata, URL rules and concurrent lookup protection. RPC responses are capped at 1 MB and requests time out after 10 seconds. Token batches are limited to 20.
